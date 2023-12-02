@@ -642,5 +642,5 @@ class Webuntis(commands.Cog):
 
 if __name__ == '__main__':
 
-    TOKEN = "MTAwMTU3OTE3NDU3OTkzNzMwMA.GQd4PO.f2TkMfPdxa57fh7ICboNXIkte9JWQ2hUnxMjnY"
+    TOKEN = ""
     client.run(token=TOKEN)
