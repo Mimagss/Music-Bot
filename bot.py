@@ -1,7 +1,7 @@
 from discord.utils import get
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, has_permission 
 import yt_dlp 
 from youtubesearchpython import VideosSearch
 import os
@@ -27,10 +27,40 @@ await interaction.response.defer()
 ctx = await commands.Context.from_interaction(interaction)
 """
 
+def getsettings() -> dict:
+    """Gibt alle Settings zurück"""
+    with open(f"{os.path.join(os.path.dirname(os.path.realpath(__file__)))}\\settings.json", 'r') as file:
+        data = file.read()
+        data = json.loads(data)
+        file.close()
+    return data
+
+settings : dict = getsettings()
+bot_settings : dict = settings.get('settings_bot')
 intents = discord.Intents.all()
-prefix = "!"
+prefix = bot_settings.get('prefix')
 client = commands.Bot(command_prefix=prefix ,intents= intents)
-OWNER_ID : int = 552929239490494474
+OWNER_ID : int = bot_settings.get('ownerId')
+
+#                                                        ---Events---
+
+@client.event
+async def on_ready():#funktioniert
+    # init Bot
+    debugMode = True # Logs every Variable in commands on shell
+    await client.add_cog(Client_Slash_Commands(prefix, debug= debugMode))
+    await client.add_cog(Client_Prefix_Commands(prefix, debug= debugMode))
+    await client.add_cog(Fun_Slash_Commands(debug= debugMode))
+    await client.add_cog(Fun_Prefix_Commands(prefix, debug= debugMode))
+    await client.add_cog(Webuntis_Slash_Commands(debug= debugMode, settings= settings.get('settings_Webuntis')))
+    await client.add_cog(Webuntis_Prefix_Commands(debug= debugMode, settings= settings.get('settings_Webuntis')))
+    await client.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name=f"Mit sich selbst"))
+    ic("Online")
+    await client.tree.sync()
+    user = client.get_user(OWNER_ID)
+    await user.send("Klar soweit!")
+
+#                                                        ---Class---
 
 class MusicClient(commands.Cog):
     def __init__(self, prefix : str, debug : bool) -> None:
@@ -218,67 +248,31 @@ class MusicClient(commands.Cog):
         else: 
             await ctx.send("soweit kann ich nicht skippen, entweder geringe Zahl hinter `!skip` angeben oder playlist löschen lassen und mit play neu lieder hinzufügen")
 
-#                                                        ---Events---
-
-    @client.event
-    async def on_ready():#funktioniert
-        # init Bot
-        debugMode = True # Logs every Variable in commands on shell
-        await client.add_cog(MusicClient(prefix, debug= debugMode))
-        await client.add_cog(Fun(debug= debugMode))
-        await client.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name=f"Mit sich selbst"))
-        ic("Online")
-        await client.tree.sync()
-        user = client.get_user(OWNER_ID)
-        await user.send("Klar soweit!")
-
-#                                                        ---Admin-Commands---
-
-    @app_commands.command()
-    async def ping_hello(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
+    async def ping_hello(self, ctx):
         ic("hello")
         await ctx.send("hello world")
 
-    @app_commands.command()
-    @app_commands.describe(steps = "Wie viele Lieder möchtest du skippen")
-    async def skip(self, interaction: discord.Interaction, steps : int | None = None):#funktioniert
-        """
-        Stoppt das Aktuelle Lied und spielt dann das nächste
-        """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
-        # erhalt der Intruktionen: steps zum Vorspulen
-        if steps is None:
-            steps = 1
+    async def skip(self, ctx, steps : int | None = None):#funktioniert
+            """
+            Stoppt das Aktuelle Lied und spielt dann das nächste
+            """
+            # erhalt der Intruktionen: steps zum Vorspulen
+            if steps is None:
+                steps = 1
+            
+                # log auf shell
+                if self.debug:
+                    ic(steps)
+                await self.skip_by_steps(ctx, steps)
+                return
         
             # log auf shell
             if self.debug:
                 ic(steps)
             await self.skip_by_steps(ctx, steps)
-            return
-    
-        # log auf shell
-        if self.debug:
-            ic(steps)
-        await self.skip_by_steps(ctx, steps)
 
-    @app_commands.command()#admin methode
-    async def reboot(self, interaction: discord.Interaction):#Admin Rechte müssen noch Implementiert werden 
-        """
-        Funktioniert noch nicht einwandfrei - nur Warning
-        Findet momentan nur sein eigenen Pfad
-
-        Mögliche Lösung:
-        den Skript Pfad des bots als Parameter übergeben, oder als config.json
-
-        !!PRÜFEN
-        ruft ein anderes Skript auf, das diesen Bot beendet und anschließend neustartet.
-        """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
-        # checks permissions
+    async def reboot(self, ctx):
+    # checks permissions
         if client.get_user(OWNER_ID) != ctx.message.author:
             await ctx.send("Du bist nicht berechtigt diesen Command zunutzen da du nicht der Entwickler bist, hehehe!")
             return
@@ -288,20 +282,17 @@ class MusicClient(commands.Cog):
             ic("Der Bot wird Heruntergefahren, Neustart in Arbeit!")
 
         # clean reboot
-        await self.clearQueue(ctx)
+        await self.clear_queue(ctx)
         await self.stop(ctx)
         await self.leave(ctx)
         await ctx.send("Der Bot wird Heruntergefahren, Neustart in Arbeit!")
         await client.close()
         
-    @app_commands.command()
-    async def enable_debug(self, interaction: discord.Interaction):
+    async def enable_debug(self, ctx):
         """
         ONLY FOR BOT OWNER:
         Logs Information on console
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         if ctx.message.author != client.get_user(OWNER_ID):
             if self.debug:
                 ic(f"{ctx.message.author} tried using enable Deubg Mode!")
@@ -312,14 +303,11 @@ class MusicClient(commands.Cog):
         self.debug = not self.debug
         ic(self.debug)
 
-    @app_commands.command()# has permission
-    async def get_all_ideas(self, interaction: discord.Interaction): # for admin
+    async def get_all_ideas(self, ctx): # for admin
         """
         ONLY FOR BOT OWNER:
         Logs Ideas from other people on console
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         data : dict = self.getLogJson()
         data = data.get('Idea')
 
@@ -332,26 +320,17 @@ class MusicClient(commands.Cog):
 
             await ctx.send("Ideas on log")
 
-#                                                        ---Commands---
-
-    @app_commands.command()
-    async def shuffle(self, interaction: discord.Interaction):
+    async def shuffle(self, ctx):
         """
         Enables randommode
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         self.randomModeEnabled = not self.randomModeEnabled
         await ctx.send(f"Random Mode: {self.randomModeEnabled}")
 
-    @app_commands.command()
-    @app_commands.describe(idee = "Deine Idee")
-    async def idee(self, interaction: discord.Interaction, idee : str):
+    async def idee(self, ctx, idee : str):
         """
         Gebe dein Wunsch an, der dir an diesem Bot fehlt. Dies wird versucht in diesem Bot zuverwirklichen!
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         author : str = ctx.message.author
 
         self.setIdeaJson(arg= idee, author= str(author))
@@ -359,21 +338,15 @@ class MusicClient(commands.Cog):
             ic(f"{idee} von {author} wurde abgespeichert, und wird demnächst bearbeitet")
         await ctx.send(f"{idee} von {author} wurde abgespeichert, und wird demnächst bearbeitet")
 
-    @app_commands.command()
-    async def clear_queue(self, interaction: discord.Interaction):#funktioniert
+    async def clear_queue(self, ctx):#funktioniert
         """Leert die Queue"""
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         self.queue.clear()
         if self.debug:
             ic(f"Die Queue ist geleert: {self.queue}")
         await ctx.send(f"Die Queue ist geleert: {self.queue}")
 
-    @app_commands.command()
-    async def send_title(self, interaction: discord.Interaction):#funktioniert
+    async def send_title(self, ctx):#funktioniert
         """Gibt die Title der Queue aus"""
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         # wenn queue leer
         if self.queue == []:
             await ctx.send("Die Queue ist leer!")
@@ -383,12 +356,8 @@ class MusicClient(commands.Cog):
             ic(f"Queue: {self.queue[0].get("titel")}")
         await ctx.send(f"Queue: {self.queue[0].get("titel")}")
 
-    
-    @app_commands.command()
-    async def send_link(self, interaction: discord.Interaction):#funktioniert
+    async def send_link(self, ctx):#funktioniert
         """Gibt die Title der Queue aus"""
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         # wenn queue leer
         if self.queue == []:
             await ctx.send("Die Queue ist leer!")
@@ -398,13 +367,7 @@ class MusicClient(commands.Cog):
             ic(f"Queue: {self.queue[0].get("link")}")
         await ctx.send(f"Queue: {self.queue[0].get("link")}")
 
-    @app_commands.command()
-    async def loop(self, interaction: discord.Interaction):#funktioniert
-        """
-        Aktiviert eine Endloss Schleife
-        """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
+    async def loop(self, ctx):
         # changes loopmodestate
         self.loopModeEnaled = not self.loopModeEnaled
         
@@ -420,13 +383,10 @@ class MusicClient(commands.Cog):
             await client.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name=f"In einer Schleife: {self.loopModeEnaled}"))
             await ctx.send("Loop disabled!")
 
-    @app_commands.command()
-    async def join(self, interaction: discord.Interaction): #funktioniert
+    async def join(self, ctx): #funktioniert
         """
         Der Bot wird in den Channel mit dem Autor Connectet
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         if not ctx.message.author.voice:
             if self.debug:
                 ic(f"{ctx.message.author.name} is not connected to a voice channel")
@@ -438,13 +398,10 @@ class MusicClient(commands.Cog):
             channel = ctx.message.author.voice.channel
             await channel.connect()
 
-    @app_commands.command()
-    async def leave(self, interaction: discord.Interaction):#funktioniert
+    async def leave(self, ctx):#funktioniert
         """
         Wenn der Bot in einem Channel ist, wird dieser disconnectet
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         if self.debug:
             ic("Trying to leave channel")
         if ctx.voice_client is None:
@@ -457,14 +414,11 @@ class MusicClient(commands.Cog):
             await ctx.voice_client.disconnect()
         else:
             return
-        
-    @app_commands.command()
-    async def play_queue(self, interaction: discord.Interaction):#funktioniert
+
+    async def play_queue(self, ctx):#funktioniert
         """
         Spielt alle Songs ab, die bisher gesucht worden sind
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         try:
             if ctx.voice_client.is_connected():
                 songs = self.getPlaylistJson()
@@ -483,17 +437,12 @@ class MusicClient(commands.Cog):
         except AttributeError as e:
             if self.debug:
                 ic(e)
-            return
+            return    
 
-    @app_commands.command()
-    @app_commands.describe(song = "Dein Song")
-    async def play(self, interaction: discord.Interaction, song : str):#funktioniert
+    async def play(self, ctx, song : str):#funktioniert
         """
         Fügt das gesuchte Lied der Queue zu, spielt bei Gelegenheit ab
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
-        
         if self.debug:
             ic(song)
 
@@ -541,14 +490,10 @@ class MusicClient(commands.Cog):
         if self.queue != []:
             await self.player(ctx, self.queue[0])
 
-        
-    @app_commands.command()
-    async def stop(self, interaction: discord.Interaction):#funktioniert
+    async def stop(self, ctx):#funktioniert
         """
         Stopt das Lied, wenn eins gespielt wird
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         if self.debug:
             ic("Stopping the current Song")
 
@@ -560,14 +505,11 @@ class MusicClient(commands.Cog):
                 await ctx.send("Das momentane Lied wird nun gestoppt!")
                 ctx.voice_client.stop()
         return
-        
-    @app_commands.command()
-    async def pause(self, interaction: discord.Interaction):#funktioniert
+
+    async def pause(self, ctx):#funktioniert
         """
         Pausiert das momentan gespielte Lied
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         if self.debug:
             ic("Pausing Song")
 
@@ -585,13 +527,10 @@ class MusicClient(commands.Cog):
 
             await ctx.send("Es wird im Moment kein Song gespielt!")
 
-    @app_commands.command()
-    async def resume(self, interaction: discord.Interaction):#funktioniert
+    async def resume(self, ctx):#funktioniert
         """
         Gibt das momentan pausierte Lied wieder
         """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         if ctx.voice_client.is_paused():
             ctx.voice_client.resume()
         else:
@@ -599,13 +538,7 @@ class MusicClient(commands.Cog):
                 ic("Es wird im Moment kein Song pausiert!")
             await ctx.send("Es wird im Moment kein Song pausiert!")
 
-    @app_commands.command()
-    async def repeat(self, interaction: discord.Interaction):#funktioniert
-        """
-        Spielt das letzt gespielte Lied als nächstes ab
-        """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
+    async def repeat(self, ctx):
         def putSongInFirst(songList : list, song : str):
             """Soll die Liste updaten um den Song, und diese zurückgeben"""
             newList = [song]
@@ -620,6 +553,318 @@ class MusicClient(commands.Cog):
             if self.debug:
                 ic(self.queue)
             self.queue = putSongInFirst(songList= self.queue, song= self.queue[0])
+
+class Client_Slash_Commands(commands.Cog):
+    def __init__(self, prefix : str, debug : bool):
+        self.musicClient : MusicClient = MusicClient(prefix= prefix, debug= debug)
+#                                                        ---Admin-Commands---
+
+    @app_commands.command()
+    async def ping_hello(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.ping_hello(ctx= ctx)
+
+    @app_commands.command()
+    @app_commands.describe(steps = "Wie viele Lieder möchtest du skippen")
+    async def skip(self, interaction: discord.Interaction, steps : int | None = None):#funktioniert
+        """
+        Stoppt das Aktuelle Lied und spielt dann das nächste
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient(ctx, steps)
+
+    @app_commands.command()#admin methode
+    @has_permission()
+    #has permission
+    async def reboot(self, interaction: discord.Interaction):#Admin Rechte müssen noch Implementiert werden 
+        """
+        Funktioniert noch nicht einwandfrei - nur Warning
+        Findet momentan nur sein eigenen Pfad
+
+        Mögliche Lösung:
+        den Skript Pfad des bots als Parameter übergeben, oder als config.json
+
+        !!PRÜFEN
+        ruft ein anderes Skript auf, das diesen Bot beendet und anschließend neustartet.
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.reboot(ctx= ctx)
+        
+    @app_commands.command()
+    @has_permission()
+    async def enable_debug(self, interaction: discord.Interaction):
+        """
+        ONLY FOR BOT OWNER:
+        Logs Information on console
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.enable_debug(ctx= ctx)
+    
+    @app_commands.command()# has permission
+    @has_permission()
+    async def get_all_ideas(self, interaction: discord.Interaction): # for admin
+        """
+        ONLY FOR BOT OWNER:
+        Logs Ideas from other people on console
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.get_all_ideas(ctx= ctx)
+
+#                                                        ---Commands---
+
+    @app_commands.command()
+    async def shuffle(self, interaction: discord.Interaction):
+        """
+        Enables randommode
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.shuffle(ctx= ctx)
+
+    @app_commands.command()
+    @app_commands.describe(idee = "Deine Idee")
+    async def idee(self, interaction: discord.Interaction, idee : str):
+        """
+        Gebe dein Wunsch an, der dir an diesem Bot fehlt. Dies wird versucht in diesem Bot zuverwirklichen!
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.idee(ctx= ctx, idee= idee)
+
+    @app_commands.command()
+    async def clear_queue(self, interaction: discord.Interaction):#funktioniert
+        """Leert die Queue"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.clear_queue(ctx= ctx)
+
+    @app_commands.command()
+    async def send_title(self, interaction: discord.Interaction):#funktioniert
+        """Gibt die Title der Queue aus"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.send_title(ctx= ctx)
+    
+    @app_commands.command()
+    async def send_link(self, interaction: discord.Interaction):#funktioniert
+        """Gibt die Title der Queue aus"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.send_link(ctx= ctx)
+
+    @app_commands.command()
+    async def loop(self, interaction: discord.Interaction):#funktioniert
+        """
+        Aktiviert eine Endloss Schleife
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.loop(ctx= ctx)
+
+    @app_commands.command()
+    async def join(self, interaction: discord.Interaction): #funktioniert
+        """
+        Der Bot wird in den Channel mit dem Autor Connectet
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.join(ctx= ctx)
+
+    @app_commands.command()
+    async def leave(self, interaction: discord.Interaction):#funktioniert
+        """
+        Wenn der Bot in einem Channel ist, wird dieser disconnectet
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.leave(ctx= ctx)
+        
+    @app_commands.command()
+    async def play_queue(self, interaction: discord.Interaction):#funktioniert
+        """
+        Spielt alle Songs ab, die bisher gesucht worden sind
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.play_queue(ctx= ctx)
+
+    @app_commands.command()
+    @app_commands.describe(song = "Dein Song")
+    async def play(self, interaction: discord.Interaction, song : str):#funktioniert
+        """
+        Fügt das gesuchte Lied der Queue zu, spielt bei Gelegenheit ab
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.play(ctx= ctx, song= song)
+        
+    @app_commands.command()
+    async def stop(self, interaction: discord.Interaction):#funktioniert
+        """
+        Stopt das Lied, wenn eins gespielt wird
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.stop(ctx= ctx)
+        
+    @app_commands.command()
+    async def pause(self, interaction: discord.Interaction):#funktioniert
+        """
+        Pausiert das momentan gespielte Lied
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.pause(ctx= ctx)
+
+    @app_commands.command()
+    async def resume(self, interaction: discord.Interaction):#funktioniert
+        """
+        Gibt das momentan pausierte Lied wieder
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.resume(ctx= ctx)
+
+    @app_commands.command()
+    async def repeat(self, interaction: discord.Interaction):#funktioniert
+        """
+        Spielt das letzt gespielte Lied als nächstes ab
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.musicClient.repeat(ctx= ctx)
+
+class Client_Prefix_Commands(commands.Cog):
+    def __init__(self, prefix : str, debug : bool):
+        self.musicClient : MusicClient = MusicClient(prefix= prefix, debug= debug)
+        self.debug = debug
+
+    def getParamFromMessage(self, message : str) -> str:
+        if self.debug:
+            ic(message)
+        
+        message = message.split(" ")
+        message.pop(0)
+        
+        newMessage = ""
+        for element in message:
+            newMessage = newMessage + element
+            newMessage = newMessage + " "    
+        return newMessage
+#                                                        ---Admin-Commands---
+    @commands.command()
+    @has_permission()
+    async def reboot(self, ctx): 
+        """Rebootet den Bot"""
+        await self.musicClient.reboot(ctx= ctx)
+        
+    @commands.command()
+    @has_permission()
+    async def enable_debug(self, ctx):
+        """ONLY FOR BOT OWNER: Logs Information on console"""
+        await self.musicClient.enable_debug(ctx= ctx)
+    
+    @commands.command()
+    @has_permission()
+    async def get_all_ideas(self, ctx):
+        """
+        ONLY FOR BOT OWNER:
+        Logs Ideas from other people on console
+        """
+        await self.musicClient.get_all_ideas(ctx= ctx)
+
+#                                                        ---Commands---
+    
+    @commands.command()
+    async def ping_hello(self, ctx):
+        await self.musicClient.ping_hello(ctx= ctx)
+
+    @commands.command()
+    async def skip(self, ctx):#TODO
+        """
+        Stoppt das Aktuelle Lied und spielt dann das nächste
+        """
+        steps : str = self.getParamFromMessage(message= ctx.content.message)
+        await self.musicClient(ctx, steps)
+
+    @app_commands.command()
+    async def shuffle(self, ctx):
+        """Enables randommode"""
+        await self.musicClient.shuffle(ctx= ctx)
+
+    @commands.command()#TODO get idee
+    async def idee(self, ctx, idee : str):
+        """
+        Gebe dein Wunsch an, der dir an diesem Bot fehlt. Dies wird versucht in diesem Bot zuverwirklichen!
+        """
+        idee : str = self.getParamFromMessage(message= ctx.content.message)
+        await self.musicClient.idee(ctx= ctx, idee= idee)
+
+    @commands.command()
+    async def clear_queue(self, ctx):#funktioniert
+        """Leert die Queue"""
+        await self.musicClient.clear_queue(ctx= ctx)
+
+    @commands.command()
+    async def send_title(self, ctx):#funktioniert
+        """Gibt die Title der Queue aus"""
+        await self.musicClient.send_title(ctx= ctx)
+    
+    @commands.command()
+    async def send_link(self, ctx):#funktioniert
+        """Gibt die Title der Queue aus"""
+        await self.musicClient.send_link(ctx= ctx)
+
+    @commands.command()
+    async def loop(self, ctx):#funktioniert
+        """Aktiviert eine Endloss Schleife"""
+        await self.musicClient.loop(ctx= ctx)
+
+    @commands.command()
+    async def join(self, ctx): #funktioniert
+        """Der Bot wird in den Channel mit dem Autor Connectet"""
+        await self.musicClient.join(ctx= ctx)
+
+    @commands.command()
+    async def leave(self, ctx):#funktioniert
+        """Wenn der Bot in einem Channel ist, wird dieser disconnectet"""
+        await self.musicClient.leave(ctx= ctx)
+        
+    @commands.command()
+    async def play_queue(self, ctx):#funktioniert
+        """Spielt alle Songs ab, die bisher gesucht worden sind"""
+        await self.musicClient.play_queue(ctx= ctx)
+
+    @commands.command()
+    async def play(self, ctx, song : str):#funktioniert
+        """Fügt das gesuchte Lied der Queue zu, spielt bei Gelegenheit ab"""
+        song : str = self.getParamFromMessage(message= ctx.content.message)
+        await self.musicClient.play(ctx= ctx, song= song)
+        
+    @commands.command()
+    async def stop(self, ctx):#funktioniert
+        """Stopt das Lied, wenn eins gespielt wird"""
+        await self.musicClient.stop(ctx= ctx)
+        
+    @commands.command()
+    async def pause(self, ctx):#funktioniert
+        """Pausiert das momentan gespielte Lied"""
+        await self.musicClient.pause(ctx= ctx)
+
+    @commands.command()
+    async def resume(self, ctx):#funktioniert
+        """Gibt das momentan pausierte Lied wieder"""
+        await self.musicClient.resume(ctx= ctx)
+
+    @commands.command()
+    async def repeat(self, ctx):#funktioniert
+        """Spielt das letzt gespielte Lied als nächstes ab"""
+        await self.musicClient.repeat(ctx= ctx)
 
 class Fun(commands.Cog):
     def __init__(self, debug : bool) -> None:
@@ -642,47 +887,27 @@ class Fun(commands.Cog):
             json.dump(data, file, sort_keys= True, indent= 4)
             file.close() 
 
-    @app_commands.command()
-    @app_commands.describe(userid = "UserId", message = "Deine Nachricht")
-    async def schreibe(self, interaction: discord.Interaction, userid : int, message : str):
-        """Schreibt die Nachricht zwischen Befehl und Id an die Id
-        
-        Es wird die Nachricht gespalten, danach die Id ausgelesen,
-        Befehl und Id rausgekürzt und der Satz wieder aneinander gefügt mit
-        Leerzeichen dazwischen, dies wird dann der Id zugesendet
-        """
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
+    async def schreibe(self, ctx, userid : int, message: str):  
+        """Schreibt die Nachricht zwischen Befehl und Id an die Id"""  
         user = client.get_user(int(userid))
         await user.send(message)
-
-    @app_commands.command()
-    async def zitat(self, interaction: discord.Interaction):
+    
+    async def zitat(self, ctx):
         """Sendet ein Zitat"""
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         data = self.getSongJson()
         zitate : list = data['Zitate']
         i = random.randint(0, len(zitate)-1)
         await ctx.send(zitate[i])
 
-    @app_commands.command()
-    @app_commands.describe(zitat = "Dein Zitat")
-    async def append_zitat(self, interaction: discord.Interaction, zitat : str):
+    async def append_zitat(self, ctx, zitat : str):
         """Fügt der Zitatenliste das neue Zitat hinzu"""
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         self.setZitate(zitat)
         if self.debug:
             ic(zitat)
         await ctx.send(f"Folgendes Zitat wurde der Liste hinzugefügt: {zitat}")
 
-    @app_commands.command()
-    @app_commands.describe(userid = "UserId")
-    async def zitatiere(self, interaction: discord.Interaction, userid : str):
+    async def zitatiere(self, ctx, userid : str):
         """Sendet der Id ein zufälliges Zitat zu"""
-        await interaction.response.defer()
-        ctx = await commands.Context.from_interaction(interaction)
         data = self.getSongJson()
         zitate: list = data['Zitate']
         i = random.randint(0, len(zitate)-1)
@@ -690,21 +915,119 @@ class Fun(commands.Cog):
         await ctx.send(f"{zitate[i]} wurde gesendet an die Id: {userid}")
         await user.send(zitate[i])
 
+class Fun_Slash_Commands(commands.Cog):
+    def __init__(self, debug) -> None:
+        self.spieleBurg = Fun(debug= debug)
+
+    @app_commands.command()
+    @app_commands.describe(userid = "UserId", message = "Deine Nachricht")
+    async def schreibe(self, interaction: discord.Interaction, userid : int, message : str):
+        """Schreibt die Nachricht zwischen Befehl und Id an die Id"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        self.spieleBurg.schreibe(ctx= ctx, userid= userid, message= message)
+
+    @app_commands.command()
+    async def zitat(self, interaction: discord.Interaction):
+        """Sendet ein Zitat"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.spieleBurg.zitat(ctx= ctx)
+
+    @app_commands.command()
+    @app_commands.describe(zitat = "Dein Zitat")
+    async def append_zitat(self, interaction: discord.Interaction, zitat : str):
+        """Fügt der Zitatenliste das neue Zitat hinzu"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.spieleBurg.append_zitat(ctx= ctx, zitat= zitat)
+
+    @app_commands.command()
+    @app_commands.describe(userid = "UserId")
+    async def zitatiere(self, interaction: discord.Interaction, userid : str):
+        """Sendet der Id ein zufälliges Zitat zu"""
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.spieleBurg.zitatiere(ctx= ctx, userid= userid)
+
+class Fun_Prefix_Commands(commands.Cog):
+    def __init__(self, debug) -> None:
+        self.spieleBurg = Fun(debug= debug)
+
+    def getParamFromMessage(self, message : str) -> str:
+        if self.debug:
+            ic(message)
+        
+        message = message.split(" ")
+        message.pop(0)
+        
+        newMessage = ""
+        for element in message:
+            newMessage = newMessage + element
+            newMessage = newMessage + " "    
+        return newMessage
+    
+    @commands.command()
+    async def schreibe(self, ctx):
+        """Schreibt die Nachricht zwischen Befehl und Id an die Id"""
+        msg : list = self.getParamFromMessage(message= ctx.content.message).spilt(" ")
+        
+        userid = int(msg.pop(0))
+        newMessage = ""
+        for element in msg:
+            newMessage = newMessage + element
+            newMessage = newMessage + " " 
+
+        self.spieleBurg.schreibe(ctx= ctx, userid= userid, message= newMessage)
+
+    @commands.command()
+    async def zitat(self, ctx):
+        """Sendet ein Zitat"""
+        await self.spieleBurg.zitat(ctx= ctx)
+
+    @commands.command()
+    async def append_zitat(self, ctx):
+        """Fügt der Zitatenliste das neue Zitat hinzu"""
+        zitat : str = self.getParamFromMessage(ctx.content.message)
+        await self.spieleBurg.append_zitat(ctx= ctx, zitat= zitat)
+
+    @commands.command()
+    async def zitatiere(self, ctx):
+        """Sendet der Id ein zufälliges Zitat zu"""
+        userid = int(self.getParamFromMessage(ctx.content.message))
+        await self.spieleBurg.zitatiere(ctx= ctx, userid= userid)
+
 #Projekt auf ICE
 class Webuntis(commands.Cog):
-    def __init__(self, debug : bool) -> None:
+    def __init__(self, debug : bool, settings : dict | None) -> None:
         """
         Soll alles was in der Schule gebraucht wird abfragen können.
         """
         self.debug : bool = debug
+        if settings is None:
+            raise ValueError("Settings are not given")
+        
         self.s = webuntis.Session(
-            server='terpsichore.webuntis.com',
-            username='Michael.Grumann',
-            password='Einbrecher65',
-            school='RFGS-Freiburg',
-            useragent='WebUntis Test'
+            server= settings.get("link"),
+            username= settings.get('username'),
+            password= settings.get('password'),
+            school= settings.get('school'),
+            useragent= settings.get('user_agent')
         )
         ic("Webuntis geladen")
+
+    async def freier_raum(self, interaction: discord.Interaction):
+        """
+        soll Freieräume anzeigen, außer spezielle Fachräume: wo Computer stehen
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        data = self.s.rooms()
+        await ctx.send("soll Freieräume anzeigen, außer spezielle Fachräume: wo Computer stehen")
+
+class Webuntis_Slash_Commands(commands.Cog):
+    def __init__(self, debug) -> None:
+        self.untis = Webuntis(debug= debug)
 
     @app_commands.command()
     async def freier_raum(self, interaction: discord.Interaction):
@@ -713,9 +1036,54 @@ class Webuntis(commands.Cog):
         """
         await interaction.response.defer()
         ctx = await commands.Context.from_interaction(interaction)
-        data = self.s.rooms()
-        await ctx.send("soll Freieräume anzeigen, außer spezielle Fachräume: wo Computer stehen")    
+        await self.untis.freier_raum(ctx= ctx)    
+
+class Webuntis_Prefix_Commands(commands.Cog):
+    def __init__(self, debug) -> None:
+        self.untis : Webuntis = Webuntis(debug= debug)
+        self.debug : bool = debug
+
+    def getParamFromMessage(self, message : str) -> str:
+        if self.debug:
+            ic(message)
+        
+        message = message.split(" ")
+        message.pop(0)
+        
+        newMessage = ""
+        for element in message:
+            newMessage = newMessage + element
+            newMessage = newMessage + " "    
+        return newMessage
+    
+    @app_commands.command()
+    async def freier_raum(self, interaction: discord.Interaction):
+        """
+        soll Freieräume anzeigen, außer spezielle Fachräume: wo Computer stehen
+        """
+        await interaction.response.defer()
+        ctx = await commands.Context.from_interaction(interaction)
+        await self.untis.freier_raum(ctx= ctx)    
 
 if __name__ == '__main__':
-    TOKEN = "MTAwMTU3OTE3NDU3OTkzNzMwMA.GQd4PO.f2TkMfPdxa57fh7ICboNXIkte9JWQ2hUnxMjnY"
+    TOKEN = bot_settings.get("token")
     client.run(token=TOKEN)
+
+    """
+    settings.json sollte so aussehen:
+
+    {
+        "settings_bot": {
+            "prefix":"",
+            "ownerId":,
+            "token": ""
+        },
+        "settings_Webuntis": {
+            "link":"",
+            "username": "",
+            "password": "",
+            "school":"",
+            "user_agent":""
+        }
+    }
+    """

@@ -1,0 +1,14 @@
+{
+    "settings_bot": {
+        "prefix":"!",
+        "ownerId":552929239490494474,
+        "token": "MTAwMTU3OTE3NDU3OTkzNzMwMA.GQd4PO.f2TkMfPdxa57fh7ICboNXIkte9JWQ2hUnxMjnY"
+    },
+    "settings_Webuntis": {
+        "link":"terpsichore.webuntis.com",
+        "username": "Michael.Grumann",
+        "password": "Einbrecher65",
+        "school":"RFGS-Freiburg",
+        "user_agent":"WebUntis Test"
+    }
+}
