@@ -33,9 +33,9 @@ client = commands.Bot(command_prefix=prefix ,intents= intents)
 OWNER_ID : int = 552929239490494474
 
 class MusicClient(commands.Cog):
-    def __init__(self, prefix : str) -> None:
+    def __init__(self, prefix : str, debug : bool) -> None:
         self.prefix : str = prefix
-        self.debug : bool = True
+        self.debug : bool = debug
         self.queue : list[dict[str]] = [] # [{"links":"","titel":""}]
         self.loopModeEnaled : bool = False
         self.randomModeEnabled : bool = False
@@ -223,8 +223,9 @@ class MusicClient(commands.Cog):
     @client.event
     async def on_ready():#funktioniert
         # init Bot
-        await client.add_cog(MusicClient(prefix))
-        await client.add_cog(Fun())
+        debugMode = True # Logs every Variable in commands on shell
+        await client.add_cog(MusicClient(prefix, debug= debugMode))
+        await client.add_cog(Fun(debug= debugMode))
         await client.change_presence(activity=discord.Activity(type=discord.ActivityType.playing, name=f"Mit sich selbst"))
         ic("Online")
         await client.tree.sync()
@@ -241,46 +242,27 @@ class MusicClient(commands.Cog):
         await ctx.send("hello world")
 
     @app_commands.command()
-    async def skip(self, interaction: discord.Interaction):#funktioniert
+    @app_commands.describe(steps = "Wie viele Lieder möchtest du skippen")
+    async def skip(self, interaction: discord.Interaction, steps : int | None = None):#funktioniert
         """
         Stoppt das Aktuelle Lied und spielt dann das nächste
         """
         await interaction.response.defer()
         ctx = await commands.Context.from_interaction(interaction)
         # erhalt der Intruktionen: steps zum Vorspulen
-        command : str = ctx.message.content
-        newCommand : list = command.split(" ")
-        buffer = newCommand.pop(0)    
-
-        # Logging Debug auf Console 
-        if self.debug:
-            ic(command)
-            ic(newCommand)
-            ic(buffer)
+        if steps is None:
+            steps = 1
         
-        # skipping to next song
-        if newCommand == []:
-            newCommand = 1
-
             # log auf shell
             if self.debug:
-                ic(newCommand)
-            await self.skip_by_steps(ctx, newCommand)
-            
-        # skipping to above other songs
-        else:
-            # Catching Error if second part of newCommand isn`t a Number
-            try:
-                newCommand = int(newCommand[0])
-            except AttributeError:
-                ic(f"{newCommand[0]} wurde ignoriert")
-                return 
-            
-            # log on console
-            if self.debug:
-                ic(newCommand)
-
-            await self.skip_by_steps(ctx, newCommand)
+                ic(steps)
+            await self.skip_by_steps(ctx, steps)
+            return
+    
+        # log auf shell
+        if self.debug:
+            ic(steps)
+        await self.skip_by_steps(ctx, steps)
 
     @app_commands.command()#admin methode
     async def reboot(self, interaction: discord.Interaction):#Admin Rechte müssen noch Implementiert werden 
@@ -330,7 +312,7 @@ class MusicClient(commands.Cog):
         self.debug = not self.debug
         ic(self.debug)
 
-    @app_commands.command()
+    @app_commands.command()# has permission
     async def get_all_ideas(self, interaction: discord.Interaction): # for admin
         """
         ONLY FOR BOT OWNER:
@@ -363,25 +345,19 @@ class MusicClient(commands.Cog):
         await ctx.send(f"Random Mode: {self.randomModeEnabled}")
 
     @app_commands.command()
-    async def idee(self, interaction: discord.Interaction):
+    @app_commands.describe(idee = "Deine Idee")
+    async def idee(self, interaction: discord.Interaction, idee : str):
         """
         Gebe dein Wunsch an, der dir an diesem Bot fehlt. Dies wird versucht in diesem Bot zuverwirklichen!
         """
         await interaction.response.defer()
         ctx = await commands.Context.from_interaction(interaction)
-        message : str = ctx.message.content
         author : str = ctx.message.author
-        newMessage = message.split(" ")
-        newMessage.pop(0)
-        idea = ""
-        for element in newMessage:
-            idea += element
-            idea += " "
 
-        self.setIdeaJson(arg= idea, author= str(author))
+        self.setIdeaJson(arg= idee, author= str(author))
         if self.debug:
-            ic(f"{idea} von {author} wurde abgespeichert, und wird demnächst bearbeitet")
-        await ctx.send(f"{idea} von {author} wurde abgespeichert, und wird demnächst bearbeitet")
+            ic(f"{idee} von {author} wurde abgespeichert, und wird demnächst bearbeitet")
+        await ctx.send(f"{idee} von {author} wurde abgespeichert, und wird demnächst bearbeitet")
 
     @app_commands.command()
     async def clear_queue(self, interaction: discord.Interaction):#funktioniert
@@ -510,20 +486,13 @@ class MusicClient(commands.Cog):
             return
 
     @app_commands.command()
-    async def play(self, interaction: discord.Interaction):#funktioniert
+    @app_commands.describe(song = "Dein Song")
+    async def play(self, interaction: discord.Interaction, song : str):#funktioniert
         """
         Fügt das gesuchte Lied der Queue zu, spielt bei Gelegenheit ab
         """
         await interaction.response.defer()
         ctx = await commands.Context.from_interaction(interaction)
-        sentence : str = ctx.message.content
-        
-        newSentence = sentence.split(" ")
-        newSentence.pop(0)
-        song = ""
-        for element in newSentence:
-            song += " "
-            song += element
         
         if self.debug:
             ic(song)
@@ -653,7 +622,8 @@ class MusicClient(commands.Cog):
             self.queue = putSongInFirst(songList= self.queue, song= self.queue[0])
 
 class Fun(commands.Cog):
-    def __init__(self) -> None:
+    def __init__(self, debug : bool) -> None:
+        self.debug : bool = debug
         ic("Spielburg geladen")
 
     def getSongJson(self):
@@ -673,7 +643,8 @@ class Fun(commands.Cog):
             file.close() 
 
     @app_commands.command()
-    async def schreibe(self, interaction: discord.Interaction):
+    @app_commands.describe(userid = "UserId", message = "Deine Nachricht")
+    async def schreibe(self, interaction: discord.Interaction, userid : int, message : str):
         """Schreibt die Nachricht zwischen Befehl und Id an die Id
         
         Es wird die Nachricht gespalten, danach die Id ausgelesen,
@@ -682,15 +653,7 @@ class Fun(commands.Cog):
         """
         await interaction.response.defer()
         ctx = await commands.Context.from_interaction(interaction)
-        msg = ctx.message.content
-        messagelist : list = msg.split(" ")
-        userId = messagelist[-1]
-        messagelist.pop(0)
-        messagelist.pop(-1)
-        message = ""
-        for element in messagelist:
-            message += element+" "
-        user = client.get_user(int(userId))
+        user = client.get_user(int(userid))
         await user.send(message)
 
     @app_commands.command()
@@ -704,14 +667,18 @@ class Fun(commands.Cog):
         await ctx.send(zitate[i])
 
     @app_commands.command()
+    @app_commands.describe(zitat = "Dein Zitat")
     async def append_zitat(self, interaction: discord.Interaction, zitat : str):
         """Fügt der Zitatenliste das neue Zitat hinzu"""
         await interaction.response.defer()
         ctx = await commands.Context.from_interaction(interaction)
         self.setZitate(zitat)
+        if self.debug:
+            ic(zitat)
         await ctx.send(f"Folgendes Zitat wurde der Liste hinzugefügt: {zitat}")
 
     @app_commands.command()
+    @app_commands.describe(userid = "UserId")
     async def zitatiere(self, interaction: discord.Interaction, userid : str):
         """Sendet der Id ein zufälliges Zitat zu"""
         await interaction.response.defer()
@@ -725,10 +692,11 @@ class Fun(commands.Cog):
 
 #Projekt auf ICE
 class Webuntis(commands.Cog):
-    def __init__(self) -> None:
+    def __init__(self, debug : bool) -> None:
         """
         Soll alles was in der Schule gebraucht wird abfragen können.
         """
+        self.debug : bool = debug
         self.s = webuntis.Session(
             server='terpsichore.webuntis.com',
             username='Michael.Grumann',
