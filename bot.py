@@ -48,7 +48,7 @@ intents = discord.Intents.all()
 prefix = bot_settings.get("prefix")
 client = commands.Bot(command_prefix=prefix, intents=intents)
 OWNER_ID: int = bot_settings.get("ownerId")
-
+TOKEN = bot_settings.get("token")
 #                                                        ---Events---
 
 
@@ -312,25 +312,6 @@ class MusicClient(commands.Cog):
         if self.debug:
             ic(steps)
         await self.skip_by_steps(ctx, steps)
-
-    async def reboot(self, ctx: commands.Context):
-        # checks permissions
-        if client.get_user(OWNER_ID) != ctx.message.author:
-            await ctx.send(
-                "Du bist nicht berechtigt diesen Command zunutzen da du nicht der Entwickler bist, hehehe!"
-            )
-            return
-
-        # log auf shell
-        if self.debug:
-            ic("Der Bot wird Heruntergefahren, Neustart in Arbeit!")
-
-        # clean reboot
-        await self.clear_queue(ctx)
-        await self.stop(ctx)
-        await self.leave(ctx)
-        await ctx.send("Der Bot wird Heruntergefahren, Neustart in Arbeit!")
-        await client.close()
 
     async def enable_debug(self, ctx: commands.Context):
         """
@@ -646,6 +627,7 @@ class InviteButtons(discord.ui.View):
     def __init__(self, inv: str):
         super().__init__()
         self.inv = inv
+        ic("Invite Button geladen")
 
     @discord.ui.button(label="Invite Btn", style=discord.ButtonStyle.blurple)
     async def inviteBtn(
@@ -657,6 +639,7 @@ class InviteButtons(discord.ui.View):
 class Client_Slash_Commands(commands.Cog):
     def __init__(self, prefix: str, debug: bool):
         self.musicClient: MusicClient = MusicClient(prefix=prefix, debug=debug)
+        ic("Slash Commands geladen")
 
     #                                                        ---Admin-Commands---
 
@@ -857,6 +840,7 @@ class Client_Prefix_Commands(commands.Cog):
     def __init__(self, prefix: str, debug: bool):
         self.musicClient: MusicClient = MusicClient(prefix=prefix, debug=debug)
         self.debug = debug
+        ic("Prefix Commands geladen")
 
     def getParamFromMessage(self, message: str) -> str:
         if self.debug:
@@ -1046,6 +1030,7 @@ class Fun(commands.Cog):
 class Fun_Slash_Commands(commands.Cog):
     def __init__(self, debug) -> None:
         self.spieleBurg = Fun(debug=debug)
+        ic("Slash Commands geladen")
 
     @app_commands.command()
     @app_commands.describe(userid="UserId", message="Deine Nachricht")
@@ -1084,6 +1069,7 @@ class Fun_Slash_Commands(commands.Cog):
 class Fun_Prefix_Commands(commands.Cog):
     def __init__(self, debug) -> None:
         self.spieleBurg = Fun(debug=debug)
+        ic("Prefix Commands geladen")
 
     def getParamFromMessage(self, message: str) -> str:
         if self.debug:
@@ -1164,6 +1150,7 @@ class Webuntis_Slash_Commands(commands.Cog):
     def __init__(self, debug, settings) -> None:
         self.untis: Webuntis = Webuntis(debug=debug, settings=settings)
         self.debug: bool = debug
+        ic("Slash Commands geladen")
 
     @app_commands.command()
     async def freier_raum(self, interaction: discord.Interaction):
@@ -1179,6 +1166,7 @@ class Webuntis_Prefix_Commands(commands.Cog):
     def __init__(self, debug, settings) -> None:
         self.untis: Webuntis = Webuntis(debug=debug, settings=settings)
         self.debug: bool = debug
+        ic("Prefix Commands geladen")
 
     def getParamFromMessage(self, message: str) -> str:
         if self.debug:
@@ -1204,8 +1192,7 @@ class Webuntis_Prefix_Commands(commands.Cog):
 
 
 if __name__ == "__main__":
-    TOKEN = bot_settings.get("token")
-    client.run(token=TOKEN)
+    client.run(TOKEN)
 
     """
     settings.json sollte so aussehen:
